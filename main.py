@@ -21,8 +21,7 @@ from rich.table import Table
 app = typer.Typer(help="Analyze AI coding trace JSON files.")
 console = Console()
 
-# Simple interview-friendly pricing assumption:
-# 1 token is roughly 4 characters, and this prototype uses a blended mock price.
+# 1 token is roughly 4 characters, and this prototype uses a blended mock price (price can be put in later)
 CHARS_PER_TOKEN = 4
 COST_PER_1K_TOKENS = 0.003
 
