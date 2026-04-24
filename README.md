@@ -1,8 +1,8 @@
 <img width="1268" height="474" alt="Screenshot 2026-04-24 at 1 10 06 PM" src="https://github.com/user-attachments/assets/41e163aa-46db-4062-acfa-9f5eac4705c9" />
 
-# trace-insight
+# traces-insight
 
-`trace-insight` is a tiny Python CLI prototype for analyzing AI coding workflow
+`traces-insight` is a tiny Python CLI prototype for analyzing AI coding workflow
 traces. It is designed as a companion idea for Traces: after a developer captures
 a session, they can run this tool to spot inefficiencies, repeated prompts, rough
 cost, and practical ways to improve the next run.
