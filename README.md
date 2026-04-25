@@ -13,6 +13,7 @@ This project does not use the Traces API. It reads a local JSON file.
 
 - Counts user prompts, assistant responses, and tool/action steps
 - Detects repeated user prompts
+- Identifies the most expensive prompt by downstream assistant/tool work
 - Estimates token count and mock cost
 - Calculates an inefficiency score from 0-100
 - Prints a concise trace summary
@@ -74,6 +75,8 @@ The code keeps the analysis intentionally simple for an interview demo:
 - Token count is estimated as `characters / 4`
 - Cost uses a mock blended price of `$0.003` per 1,000 tokens
 - Repeated prompts are detected by lowercasing and normalizing whitespace
+- Most expensive prompt looks at assistant responses and tool actions triggered
+  after each user prompt before the next user prompt
 - Inefficiency score combines repeated prompts, extra tool steps, long traces,
   and correction words like `again`, `still`, `fix`, and `same error`
 

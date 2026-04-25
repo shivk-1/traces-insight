@@ -42,6 +42,20 @@ def estimate_tokens(messages: list[dict[str, Any]]) -> int:
     return max(1, round(total_chars / CHARS_PER_TOKEN))
 
 
+def estimate_cost(tokens: int) -> float:
+    """Estimate cost using the project's mock blended token price."""
+    return tokens / 1000 * COST_PER_1K_TOKENS
+
+
+def describe_cost_impact(action_count: int, cost: float) -> str:
+    """Convert rough downstream work into an interview-friendly label."""
+    if action_count >= 4 or cost >= 0.001:
+        return "High"
+    if action_count >= 2 or cost >= 0.0005:
+        return "Medium"
+    return "Low"
+
+
 def load_trace(path: Path) -> list[dict[str, Any]]:
     """Load and validate the minimal JSON shape expected by the CLI."""
     try:
@@ -67,6 +81,45 @@ def load_trace(path: Path) -> list[dict[str, Any]]:
     return data
 
 
+def find_most_expensive_prompt(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Find the user prompt that triggered the most downstream trace activity.
+
+    The heuristic is intentionally simple: each user prompt owns the assistant
+    responses and tool actions after it until the next user prompt appears.
+    """
+    most_expensive: dict[str, Any] | None = None
+
+    for index, message in enumerate(messages):
+        if message["role"] != "user":
+            continue
+
+        downstream = []
+        for next_message in messages[index + 1 :]:
+            if next_message["role"] == "user":
+                break
+            if next_message["role"] in {"assistant", "tool"}:
+                downstream.append(next_message)
+
+        action_count = len(downstream)
+        downstream_tokens = estimate_tokens(downstream) if downstream else 0
+        downstream_cost = estimate_cost(downstream_tokens)
+        score = action_count * 10 + downstream_tokens
+
+        candidate = {
+            "prompt": message.get("content", ""),
+            "action_count": action_count,
+            "estimated_tokens": downstream_tokens,
+            "estimated_cost": downstream_cost,
+            "cost_impact": describe_cost_impact(action_count, downstream_cost),
+            "score": score,
+        }
+
+        if most_expensive is None or candidate["score"] > most_expensive["score"]:
+            most_expensive = candidate
+
+    return most_expensive
+
+
 def analyze_trace(messages: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute practical metrics from the trace messages."""
     role_counts = Counter(message["role"] for message in messages)
@@ -81,7 +134,8 @@ def analyze_trace(messages: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
     tokens = estimate_tokens(messages)
-    cost = tokens / 1000 * COST_PER_1K_TOKENS
+    cost = estimate_cost(tokens)
+    most_expensive_prompt = find_most_expensive_prompt(messages)
 
     repeat_penalty = min(35, sum(repeated_prompts.values()) * 8)
     tool_penalty = min(25, max(0, len(tool_steps) - len(user_prompts)) * 5)
@@ -110,6 +164,7 @@ def analyze_trace(messages: list[dict[str, Any]]) -> dict[str, Any]:
         "estimated_tokens": tokens,
         "estimated_cost": cost,
         "inefficiency_score": inefficiency_score,
+        "most_expensive_prompt": most_expensive_prompt,
     }
 
 
@@ -190,6 +245,29 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
     else:
         repeated_table.add_row("[dim]No repeated prompts found[/dim]", "0")
     console.print(repeated_table)
+
+    expensive_prompt = metrics["most_expensive_prompt"]
+    if expensive_prompt:
+        expensive_text = (
+            f'[bold]Prompt:[/bold] "{expensive_prompt["prompt"]}"\n'
+            "[bold]Assistant/tool actions triggered:[/bold] "
+            f"{expensive_prompt['action_count']}\n"
+            "[bold]Estimated downstream tokens:[/bold] "
+            f"{expensive_prompt['estimated_tokens']:,}\n"
+            "[bold]Estimated Cost Impact:[/bold] "
+            f"{expensive_prompt['cost_impact']} "
+            f"(${expensive_prompt['estimated_cost']:.4f})"
+        )
+    else:
+        expensive_text = "[dim]No user prompts found in this trace.[/dim]"
+
+    console.print(
+        Panel(
+            expensive_text,
+            title="Most Expensive Prompt",
+            border_style="red",
+        )
+    )
 
     console.print(
         Panel(
