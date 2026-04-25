@@ -84,4 +84,4 @@ The code keeps the analysis intentionally simple for an interview demo:
 
 - `main.py`: Typer CLI and analysis logic
 - `sample_trace.json`: intentionally inefficient trace for demoing insights
-- `requirements.txt`: Python dependencies
+- `requirements.txt`: Python dependencies to download
