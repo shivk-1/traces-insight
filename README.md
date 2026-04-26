@@ -14,6 +14,7 @@ This project does not use the Traces API. It reads a local JSON file.
 - Counts user prompts, assistant responses, and tool/action steps
 - Detects repeated user prompts
 - Identifies the most expensive prompt by downstream assistant/tool work
+- Adds AI Fix Suggestions with root cause, recommended fix, and savings
 - Estimates token count and mock cost
 - Calculates an inefficiency score from 0-100
 - Prints a concise trace summary
@@ -39,6 +40,16 @@ If you do not activate the virtual environment, run:
 ```bash
 .venv/bin/python main.py analyze sample_trace.json
 ```
+
+## AI Fix Suggestions
+
+The report ends with a deterministic diagnosis section:
+
+- `Likely Root Cause`: explains why the trace became inefficient
+- `Recommended Fix`: gives concrete workflow changes like acceptance criteria
+- `Estimated Savings`: projects fewer retries and lower token cost
+
+This uses local metrics only. There are no OpenAI API calls or external models.
 
 ## Input Format
 
@@ -77,6 +88,8 @@ The code keeps the analysis intentionally simple for an interview demo:
 - Repeated prompts are detected by lowercasing and normalizing whitespace
 - Most expensive prompt looks at assistant responses and tool actions triggered
   after each user prompt before the next user prompt
+- AI Fix Suggestions are deterministic rules based on repeated prompts, tool
+  volume, and inefficiency score
 - Inefficiency score combines repeated prompts, extra tool steps, long traces,
   and correction words like `again`, `still`, `fix`, and `same error`
 

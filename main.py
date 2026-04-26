@@ -211,6 +211,67 @@ def build_suggestions(metrics: dict[str, Any]) -> list[str]:
     return suggestions[:3]
 
 
+def build_ai_fix_diagnosis(metrics: dict[str, Any]) -> dict[str, str]:
+    """Diagnose the likely workflow issue and recommend a concrete fix.
+
+    This is deterministic on purpose: it makes the prototype feel intelligent
+    while staying easy to explain in an interview.
+    """
+    repeated_prompt_types = len(metrics["repeated_prompts"])
+    repeated_prompt_count = sum(metrics["repeated_prompts"].values())
+    tool_steps_are_high = metrics["tool_steps"] > metrics["user_prompts"]
+    inefficiency_is_high = metrics["inefficiency_score"] >= 50
+
+    if repeated_prompt_types > 1 or repeated_prompt_count > 2:
+        root_cause = (
+            "The workflow likely started from an underspecified prompt, causing "
+            "repeated clarification and correction loops."
+        )
+    elif tool_steps_are_high:
+        root_cause = (
+            "The agent spent too much effort rediscovering context through "
+            "scattered tool actions."
+        )
+    elif inefficiency_is_high:
+        root_cause = (
+            "Validation happened late in the workflow, so the agent corrected "
+            "issues after implementation instead of preventing them upfront."
+        )
+    else:
+        root_cause = (
+            "The trace looks mostly healthy, with a small opportunity to make "
+            "the initial request more precise."
+        )
+
+    fix_steps = ["Define expected output before implementation."]
+    if inefficiency_is_high or repeated_prompt_types:
+        fix_steps.append("Add acceptance criteria before implementation:")
+        fix_steps.extend(
+            [
+                "- expected output format",
+                "- exact file to modify",
+                "- clear success condition",
+            ]
+        )
+    if tool_steps_are_high:
+        fix_steps.append("Batch related file reads and command checks before asking for revisions.")
+    if not inefficiency_is_high and not repeated_prompt_types and not tool_steps_are_high:
+        fix_steps.append("Ask the agent to state its plan and success check before editing.")
+
+    if metrics["inefficiency_score"] >= 50:
+        savings = "~30% fewer retries\n~40% lower token cost"
+    elif metrics["inefficiency_score"] >= 25:
+        savings = "~15% fewer retries\n~20% lower token cost"
+    else:
+        savings = "~5% fewer retries\n~10% lower token cost"
+
+    return {
+        "root_cause": root_cause,
+        "recommended_fix": "\n".join(fix_steps),
+        "estimated_savings": savings,
+    }
+
+
 def render_report(path: Path, metrics: dict[str, Any]) -> None:
     """Render the analysis using Rich tables and panels."""
     console.print()
@@ -286,6 +347,23 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
             suggestions,
             title="3 Practical Improvement Suggestions",
             border_style="blue",
+        )
+    )
+
+    diagnosis = build_ai_fix_diagnosis(metrics)
+    diagnosis_text = (
+        f"[bold red]Likely Root Cause:[/bold red]\n"
+        f"{diagnosis['root_cause']}\n\n"
+        f"[bold green]Recommended Fix:[/bold green]\n"
+        f"{diagnosis['recommended_fix']}\n\n"
+        f"[bold cyan]Estimated Savings:[/bold cyan]\n"
+        f"{diagnosis['estimated_savings']}"
+    )
+    console.print(
+        Panel(
+            diagnosis_text,
+            title="AI Fix Suggestions",
+            border_style="bright_magenta",
         )
     )
 
