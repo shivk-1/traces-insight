@@ -2,7 +2,7 @@
 
 # trace-insight
 
-`trace-insight` is a small Python CLI for turning AI coding workflow traces into useful engineering feedback. It reads a simplified local JSON trace, summarizes what happened, highlights inefficient loops, and recommends how to improve the next run.
+`trace-insight` is a small Python CLI for turning AI coding workflow traces into useful engineering feedback. It reads a simplified local JSON trace, summarizes what happened, highlights inefficient loops, and recommends how to improve for the next run.
 
 This project does not use the real Traces API. It is a local companion-style prototype that works with `sample_trace.json` or any compatible JSON file.
 
