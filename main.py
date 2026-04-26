@@ -21,6 +21,14 @@ console = Console()
 CHARS_PER_TOKEN = 4
 COST_PER_1K_TOKENS = 0.003
 
+TRACE_BANNER = r"""
+█████ ████   ███   ███  █████   ███  █   █  ███  ███  ███  █   █ █████
+  █   █   █ █   █ █     █        █   ██  █ █      █  █     █   █   █
+  █   ████  █████ █     ████     █   █ █ █  ███   █  █  ██ █████   █
+  █   █  █  █   █ █     █        █   █  ██     █  █  █   █ █   █   █
+  █   █   █ █   █  ███  █████   ███  █   █ ████  ███  ███  █   █   █
+""".strip("\n")
+
 
 @app.callback()
 def main() -> None:
@@ -292,6 +300,8 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
     score_status = score_label(score)
     repeated_patterns = len(metrics["repeated_prompts"])
 
+    console.print()
+    console.print(f"[bold cyan]{TRACE_BANNER}[/bold cyan]")
     console.print()
     console.print(
         Panel.fit(
