@@ -136,17 +136,15 @@ def analyze_trace(messages: list[dict[str, Any]]) -> dict[str, Any]:
     repeat_penalty = min(35, sum(repeated_prompts.values()) * 8)
     tool_penalty = min(25, max(0, len(tool_steps) - len(user_prompts)) * 5)
     long_trace_penalty = min(20, max(0, len(messages) - 10) * 2)
-    correction_penalty = min(
-        20,
-        sum(
-            5
-            for message in user_prompts
-            if any(
-                marker in normalize_prompt(message.get("content", ""))
-                for marker in ["again", "still", "fix", "retry", "same error"]
-            )
-        ),
+    correction_signals = sum(
+        1
+        for message in user_prompts
+        if any(
+            marker in normalize_prompt(message.get("content", ""))
+            for marker in ["again", "still", "fix", "retry", "same error"]
+        )
     )
+    correction_penalty = min(20, correction_signals * 5)
     inefficiency_score = min(
         100, repeat_penalty + tool_penalty + long_trace_penalty + correction_penalty
     )
@@ -160,6 +158,7 @@ def analyze_trace(messages: list[dict[str, Any]]) -> dict[str, Any]:
         "estimated_tokens": tokens,
         "estimated_cost": cost,
         "inefficiency_score": inefficiency_score,
+        "correction_signals": correction_signals,
         "most_expensive_prompt": most_expensive_prompt,
     }
 
@@ -268,33 +267,79 @@ def build_ai_fix_diagnosis(metrics: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def score_style(score: int) -> str:
+    """Choose a color for the inefficiency score."""
+    if score >= 70:
+        return "bold red"
+    if score >= 40:
+        return "bold yellow"
+    return "bold green"
+
+
+def score_label(score: int) -> str:
+    """Convert the score into a short status label."""
+    if score >= 70:
+        return "High friction"
+    if score >= 40:
+        return "Moderate friction"
+    return "Healthy"
+
+
 def render_report(path: Path, metrics: dict[str, Any]) -> None:
     """Render the analysis using Rich tables and panels."""
+    score = metrics["inefficiency_score"]
+    score_color = score_style(score)
+    score_status = score_label(score)
+    repeated_patterns = len(metrics["repeated_prompts"])
+
     console.print()
     console.print(
         Panel.fit(
-            f"[bold cyan]trace-insight[/bold cyan]\n[white]{path}[/white]",
+            f"[bold cyan]trace-insight[/bold cyan]\n"
+            f"[dim]Analyzing:[/dim] [white]{path}[/white]",
             border_style="cyan",
         )
     )
 
-    table = Table(title="Trace Metrics", show_header=True, header_style="bold magenta")
-    table.add_column("Metric", style="cyan", no_wrap=True)
-    table.add_column("Value", justify="right")
-    table.add_row("Total messages", str(metrics["total_messages"]))
-    table.add_row("User prompts", str(metrics["user_prompts"]))
-    table.add_row("Assistant responses", str(metrics["assistant_responses"]))
-    table.add_row("Tool/action steps", str(metrics["tool_steps"]))
-    table.add_row("Estimated tokens", f"{metrics['estimated_tokens']:,}")
-    table.add_row("Estimated cost", f"${metrics['estimated_cost']:.4f}")
-    table.add_row("Inefficiency score", f"{metrics['inefficiency_score']}/100")
-    console.print(table)
+    overview = Table(
+        title="1. Trace Overview",
+        show_header=True,
+        header_style="bold cyan",
+        title_style="bold cyan",
+    )
+    overview.add_column("Metric", style="cyan", no_wrap=True)
+    overview.add_column("Value", justify="right", style="bold white")
+    overview.add_row("Total Messages", str(metrics["total_messages"]))
+    overview.add_row("User Prompts", str(metrics["user_prompts"]))
+    overview.add_row("Assistant Responses", str(metrics["assistant_responses"]))
+    overview.add_row("Tool Actions", str(metrics["tool_steps"]))
+    overview.add_row("Estimated Tokens", f"{metrics['estimated_tokens']:,}")
+    overview.add_row("Estimated Cost", f"${metrics['estimated_cost']:.4f}")
+    console.print(overview)
+    console.print()
+
+    efficiency_text = (
+        f"[bold]Inefficiency Score[/bold]\n"
+        f"[{score_color}]{score}/100 - {score_status}[/{score_color}]\n\n"
+        f"[bold]Repeated prompt patterns:[/bold] {repeated_patterns}\n"
+        f"[bold]Retry/correction signals:[/bold] {metrics['correction_signals']}"
+    )
+    console.print(
+        Panel(
+            efficiency_text,
+            title="2. Workflow Efficiency",
+            border_style="yellow" if score < 70 else "red",
+        )
+    )
 
     repeated_table = Table(
-        title="Repeated User Prompts", show_header=True, header_style="bold yellow"
+        title="Repeated Prompt Patterns",
+        show_header=True,
+        header_style="bold yellow",
+        title_style="bold yellow",
     )
     repeated_table.add_column("Prompt")
-    repeated_table.add_column("Count", justify="right")
+    repeated_table.add_column("Count", justify="right", style="bold white")
 
     if metrics["repeated_prompts"]:
         for prompt, count in metrics["repeated_prompts"].items():
@@ -302,18 +347,19 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
     else:
         repeated_table.add_row("[dim]No repeated prompts found[/dim]", "0")
     console.print(repeated_table)
+    console.print()
 
     expensive_prompt = metrics["most_expensive_prompt"]
     if expensive_prompt:
         expensive_text = (
-            f'[bold]Prompt:[/bold] "{expensive_prompt["prompt"]}"\n'
-            "[bold]Assistant/tool actions triggered:[/bold] "
-            f"{expensive_prompt['action_count']}\n"
-            "[bold]Estimated downstream tokens:[/bold] "
-            f"{expensive_prompt['estimated_tokens']:,}\n"
-            "[bold]Estimated Cost Impact:[/bold] "
-            f"{expensive_prompt['cost_impact']} "
-            f"(${expensive_prompt['estimated_cost']:.4f})"
+            f"[bold]Prompt[/bold]\n"
+            f'[white]"{expensive_prompt["prompt"]}"[/white]\n\n'
+            f"[bold]Downstream assistant/tool actions[/bold]\n"
+            f"{expensive_prompt['action_count']}\n\n"
+            f"[bold]Estimated cost impact[/bold]\n"
+            f"[red]{expensive_prompt['cost_impact']}[/red] "
+            f"(${expensive_prompt['estimated_cost']:.4f}, "
+            f"{expensive_prompt['estimated_tokens']:,} tokens)"
         )
     else:
         expensive_text = "[dim]No user prompts found in this trace.[/dim]"
@@ -321,10 +367,31 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
     console.print(
         Panel(
             expensive_text,
-            title="Most Expensive Prompt",
+            title="3. Most Expensive Prompt",
+            subtitle="highest downstream work",
             border_style="red",
         )
     )
+    console.print()
+
+    diagnosis = build_ai_fix_diagnosis(metrics)
+    diagnosis_text = (
+        f"[bold red]Likely Root Cause[/bold red]\n"
+        f"{diagnosis['root_cause']}\n\n"
+        f"[bold green]Recommended Fix[/bold green]\n"
+        f"{diagnosis['recommended_fix']}\n\n"
+        f"[bold cyan]Estimated Savings[/bold cyan]\n"
+        f"{diagnosis['estimated_savings']}"
+    )
+    console.print(
+        Panel(
+            diagnosis_text,
+            title="4. Diagnosis",
+            subtitle="recommended fix",
+            border_style="bright_magenta",
+        )
+    )
+    console.print()
 
     console.print(
         Panel(
@@ -333,6 +400,7 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
             border_style="green",
         )
     )
+    console.print()
 
     suggestions = "\n".join(
         f"[bold]{index}.[/bold] {suggestion}"
@@ -341,25 +409,8 @@ def render_report(path: Path, metrics: dict[str, Any]) -> None:
     console.print(
         Panel(
             suggestions,
-            title="3 Practical Improvement Suggestions",
+            title="Additional Suggestions",
             border_style="blue",
-        )
-    )
-
-    diagnosis = build_ai_fix_diagnosis(metrics)
-    diagnosis_text = (
-        f"[bold red]Likely Root Cause:[/bold red]\n"
-        f"{diagnosis['root_cause']}\n\n"
-        f"[bold green]Recommended Fix:[/bold green]\n"
-        f"{diagnosis['recommended_fix']}\n\n"
-        f"[bold cyan]Estimated Savings:[/bold cyan]\n"
-        f"{diagnosis['estimated_savings']}"
-    )
-    console.print(
-        Panel(
-            diagnosis_text,
-            title="AI Fix Suggestions",
-            border_style="bright_magenta",
         )
     )
 
