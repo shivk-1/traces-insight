@@ -1,8 +1,4 @@
-"""trace-insight: summarize AI coding workflow traces from JSON.
-
-This prototype intentionally avoids any real Traces API integration. It works
-with a simple exported JSON file so the core idea is easy to demo and explain.
-"""
+"""trace-insight: summarize AI coding workflow traces from JSON files."""
 
 from __future__ import annotations
 
@@ -21,7 +17,7 @@ from rich.table import Table
 app = typer.Typer(help="Analyze AI coding trace JSON files.")
 console = Console()
 
-# 1 token is roughly 4 characters, and this prototype uses a blended mock price (price can be put in later)
+# Rough local estimates used for deterministic trace analysis.
 CHARS_PER_TOKEN = 4
 COST_PER_1K_TOKENS = 0.003
 
@@ -48,7 +44,7 @@ def estimate_cost(tokens: int) -> float:
 
 
 def describe_cost_impact(action_count: int, cost: float) -> str:
-    """Convert rough downstream work into an interview-friendly label."""
+    """Convert rough downstream work into a readable impact label."""
     if action_count >= 4 or cost >= 0.001:
         return "High"
     if action_count >= 2 or cost >= 0.0005:
@@ -212,11 +208,7 @@ def build_suggestions(metrics: dict[str, Any]) -> list[str]:
 
 
 def build_ai_fix_diagnosis(metrics: dict[str, Any]) -> dict[str, str]:
-    """Diagnose the likely workflow issue and recommend a concrete fix.
-
-    This is deterministic on purpose: it makes the prototype feel intelligent
-    while staying easy to explain in an interview.
-    """
+    """Diagnose the likely workflow issue and recommend a concrete fix."""
     repeated_prompt_types = len(metrics["repeated_prompts"])
     repeated_prompt_count = sum(metrics["repeated_prompts"].values())
     tool_steps_are_high = metrics["tool_steps"] > metrics["user_prompts"]
@@ -224,8 +216,8 @@ def build_ai_fix_diagnosis(metrics: dict[str, Any]) -> dict[str, str]:
 
     if repeated_prompt_types > 1 or repeated_prompt_count > 2:
         root_cause = (
-            "The workflow likely started from an underspecified prompt, causing "
-            "repeated clarification and correction loops."
+            "Validation relied too heavily on retries instead of clear "
+            "acceptance criteria, causing repeated correction loops."
         )
     elif tool_steps_are_high:
         root_cause = (
@@ -254,9 +246,13 @@ def build_ai_fix_diagnosis(metrics: dict[str, Any]) -> dict[str, str]:
             ]
         )
     if tool_steps_are_high:
-        fix_steps.append("Batch related file reads and command checks before asking for revisions.")
+        fix_steps.append(
+            "Batch related file reads and command checks before asking for revisions."
+        )
     if not inefficiency_is_high and not repeated_prompt_types and not tool_steps_are_high:
-        fix_steps.append("Ask the agent to state its plan and success check before editing.")
+        fix_steps.append(
+            "Ask the agent to state its plan and success check before editing."
+        )
 
     if metrics["inefficiency_score"] >= 50:
         savings = "~30% fewer retries\n~40% lower token cost"
